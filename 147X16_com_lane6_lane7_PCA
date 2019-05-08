@@ -1,0 +1,37 @@
+library("DESeq2")
+library("ggplot2")
+
+cts6 <- read.table("counts/all.tsv006", row.names=1, header=T)
+cts7 <- read.table("counts/all.tsv007", row.names=1, header=T)
+cts <- cts6 +cts7
+#remove MCL.16
+cts <- cts[,c(1:7,9:24)]
+
+coldata <- read.table("samples.tsvX16", row.names=1,  header = T)
+
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design = ~ condition)
+dds
+
+
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+
+dds$condition <- factor(dds$condition, levels = c( "Resistance", "Sensitive"))
+
+dds <- DESeq(dds)
+
+
+
+dds <- estimateSizeFactors(dds)
+# shifted log of normalized counts
+se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1), colData=colData(dds))
+
+
+z <- plotPCA( DESeqTransform(se) )
+z + geom_label(aes(label = name))
+nudge <- position_nudge(y = 1)
+z + geom_label(aes(label = name), position = nudge)
+z + geom_text(aes(label = name), position = nudge)
+
