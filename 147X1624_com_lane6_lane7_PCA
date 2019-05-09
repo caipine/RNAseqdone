@@ -1,1 +1,107 @@
+library("DESeq2")
+library("ggplot2")
+
+cts6 <- read.table("counts/all.tsv006", row.names=1, header=T)
+cts7 <- read.table("counts/all.tsv007", row.names=1, header=T)
+cts <- cts6 +cts7
+#remove MCL.16 17 18 19 20 22 23
+cts <- cts[,c(1:7,12,14,18:24)]
+
+coldata <- read.table("samples.tsvX1624", row.names=1,  header = T)
+
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design = ~ condition)
+dds
+
+
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+
+dds$condition <- factor(dds$condition, levels = c( "Resistance", "Sensitive"))
+
+dds <- DESeq(dds)
+
+
+
+dds <- estimateSizeFactors(dds)
+# shifted log of normalized counts
+se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1), colData=colData(dds))
+
+
+z <- plotPCA( DESeqTransform(se) )
+z + geom_label(aes(label = name))
+nudge <- position_nudge(y = 1)
+z + geom_label(aes(label = name), position = nudge)
+z + geom_text(aes(label = name), position = nudge)
+
+####################
+
+rld <- rlog(dds, blind=F)
+
+	contrastDEGenes <- subset(results(dds), padj < 0.05)
+	results =   contrastDEGenes
+
+	   # make the lists
+	    upgenes <- rownames(head(results[ order( results$log2FoldChange ), ], n=20))
+	    
+
+	    # this gives us the rows we want
+	    rows <- match(upgenes, row.names(rld))
+    mat <- assay(rld)[rows,1:16]
+    mat <- mat - rowMeans(mat)
+    mat <- as.matrix(as.data.frame(mat))
+
+
+    # the labels are hard coded at the moment :(
+    df <- as.data.frame(colData(rld))
+my_sample_col <- as.data.frame(df$condition)
+row.names(my_sample_col) <- row.names(df)
+
+
+my_gene_col <- as.data.frame(mat[,1])
+colnames(my_gene_col) <- "cluster"
+my_gene_col$cluster <- 1
+my_gene_col
+
+pheatmap(mat,
+         annotation_row = my_gene_col,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+         cutree_cols = 2)				
+#################################
+
+downgenes <- rownames(head(results[ order( -results$log2FoldChange ), ], n=20))
+    rows <- match(downgenes, row.names(rld))
+    mat1 <- assay(rld)[rows,]
+    mat1<- mat1 - rowMeans(mat1)
+    mat1 <- as.matrix(as.data.frame(mat1))
+    df <- as.data.frame(colData(rld))
+my_sample_col <- as.data.frame(df$condition)
+row.names(my_sample_col) <- row.names(df)
+
+my_gene_col1 <- as.data.frame(mat1[,1])
+colnames(my_gene_col1) <- "cluster"
+my_gene_col1$cluster <- 1
+my_gene_col1
+
+
+
+pheatmap(mat1,
+         annotation_row = my_gene_col1,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+         cutree_cols = 2)
+
+
+#######################
+mat_A<- rbind(mat,mat1)
+my_gene_col_A <- rbind(my_gene_col,my_gene_col1)
+
+pheatmap(mat_A,
+         annotation_row = my_gene_col_A,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+         cutree_cols = 2)
+         
 
