@@ -1,0 +1,323 @@
+library("DESeq2")
+library("ggplot2")
+library(pheatmap)
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+library(annotate)
+
+library(pathview)
+library(gage)
+library(gageData)
+data(kegg.sets.hs)
+data(sigmet.idx.hs)
+kegg.sets.hs = kegg.sets.hs[sigmet.idx.hs]
+head(kegg.sets.hs, 3)
+
+library(biomaRt)
+
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+
+library("BiocParallel")
+register(MulticoreParam(4))
+
+
+##########################annotation_data <- as.data.frame(colData(rld)[c("Resistance", "Sensitive")])
+
+
+cts6 <- read.table("counts/all.tsv006", row.names=1, header=T)
+cts7 <- read.table("counts/all.tsv007", row.names=1, header=T)
+cts <- cts6 +cts7
+#remove MCL.16 17 18 19 20 22 23
+cts <- cts[,c(1:7,12,14,18:24)]
+
+coldata <- read.table("samples.tsvX1624", row.names=1,  header = T)
+
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design = ~ condition)
+dds
+
+
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+
+dds$condition <- factor(dds$condition, levels = c( "Resistance", "Sensitive"))
+
+dds <- DESeq(dds)
+
+dds <- estimateSizeFactors(dds)
+# shifted log of normalized counts
+se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1), colData=colData(dds))
+
+
+z <- plotPCA( DESeqTransform(se) )
+z + geom_label(aes(label = name))
+nudge <- position_nudge(y = 1)
+z + geom_label(aes(label = name), position = nudge)
+z + geom_text(aes(label = name), position = nudge)
+
+####################
+rld <- rlog(dds, blind=F)
+contrastDEGenes <- subset(results(dds), padj < 0.05)
+results =   contrastDEGenes
+# make the lists
+upgenes <- rownames(head(results[ order( results$log2FoldChange ), ], n=20))
+# this gives us the rows we want
+rows <- match(upgenes, row.names(rld))
+    mat <- assay(rld)[rows,1:16]
+    mat <- mat - rowMeans(mat)
+    mat <- as.matrix(as.data.frame(mat))
+
+
+    # the labels are hard coded at the moment :(
+    df <- as.data.frame(colData(rld))
+my_sample_col <- as.data.frame(df$condition)
+row.names(my_sample_col) <- row.names(df)
+
+
+my_gene_col <- as.data.frame(mat[,1])
+colnames(my_gene_col) <- "cluster"
+my_gene_col$cluster <- 1
+my_gene_col
+
+pheatmap(mat,
+         annotation_row = my_gene_col,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+         cutree_cols = 2)				
+#################################
+
+downgenes <- rownames(head(results[ order( -results$log2FoldChange ), ], n=20))
+    rows <- match(downgenes, row.names(rld))
+    mat1 <- assay(rld)[rows,]
+    mat1 <- mat1 - rowMeans(mat1)
+    mat1 <- as.matrix(as.data.frame(mat1))
+    df <- as.data.frame(colData(rld))
+my_sample_col <- as.data.frame(df$condition)
+row.names(my_sample_col) <- row.names(df)
+
+my_gene_col1 <- as.data.frame(mat1[,1])
+colnames(my_gene_col1) <- "cluster"
+my_gene_col1$cluster <- 1
+my_gene_col1
+
+pheatmap(mat1,
+         annotation_row = my_gene_col1,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+         cutree_cols = 2)
+
+#######################
+mat_A<- rbind(mat,mat1)
+my_gene_col_A <- rbind(my_gene_col,my_gene_col1)
+
+pheatmap(mat_A,
+         annotation_row = my_gene_col_A,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+cutree_cols = 2)
+
+
+
+
+
+
+
+
+
+
+genes_0.1 <- u_ctsf$V1
+rows <- match(genes_0.1, row.names(rld))
+    mat <- assay(rld)[rows,1:16]
+    mat <- mat - rowMeans(mat)
+    mat <- as.data.frame(mat)
+mat <- as.matrix(as.data.frame(mat))
+mat <- unique(mat)
+
+
+transcript_ids <- rownames(mat)
+temp <- getBM(attributes = c('ensembl_transcript_id_version', 
+                            'ensembl_gene_id', 
+                            'external_transcript_name',
+                            'external_gene_name'),
+             filters = 'ensembl_transcript_id_version', 
+             values = transcript_ids,
+             mart = mart)
+
+temp<- unique(temp)
+
+
+matX <- mat[(rownames(mat) %in% temp$ensembl_transcript_id_version),]
+
+temp2 <- getBM(attributes = c('ensembl_transcript_id_version', 
+                            'ensembl_gene_id', 
+                            'external_transcript_name',
+                            'external_gene_name'),
+             filters = 'ensembl_transcript_id_version', 
+             values = rownames(matX),
+             mart = mart)
+
+matX<-  matX[order(rownames(matX)),]
+temp2 <- temp2[order(temp2$ensembl_transcript_id_version),]
+dim(matX)
+dim(temp2)
+rownames(matX) <-  temp2$external_transcript_name
+
+    df <- as.data.frame(colData(rld))
+my_sample_col <- as.data.frame(df$condition)
+row.names(my_sample_col) <- row.names(df)
+
+my_gene_colX <- as.data.frame(matX[,1])
+colnames(my_gene_colX) <- "cluster"
+my_gene_colX$cluster <- 1
+my_gene_colX
+
+pheatmap(matX,
+         annotation_row = my_gene_colX,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+         cutree_cols = 2)
+
+
+
+
+
+
+
+
+
+#pathway
+##########################
+#res <- results(dds)
+#res
+#resultsNames(dds)
+#res <- results(dds, name="condition_Sensitive_vs_Resistance")
+res <- results(dds, contrast=c("condition","Resistance", "Sensitive"))
+res.nona<- res[!is.na(res$padj),]
+res2 <- res.nona[(res.nona$padj < 0.01),]
+
+res2$V1 <- rownames(res2)
+resd <- data.frame(res2)
+
+ent1 = read.table("counts/knowtokeggentrez",  sep = "+")
+ent2 = read.table("counts/knowtokeggentrez")
+ent <- cbind(ent2,ent1$V2) 
+ent <- ent[,c(1,4)]
+
+resdi<- merge(resd, ent, "V1")
+colnames(resdi)[8] <- "ENTRZ"
+resdi8<- resdi[,8]
+l1 <-as.character( as.list(resdi8[!duplicated(resdi8)]))
+getSYMBOL(l1, data='org.Hs.eg')
+ent2S<- as.data.frame(getSYMBOL(l1, data='org.Hs.eg'))
+ent2S$V1 <- rownames(ent2S)
+
+colnames(ent2S) <- c("SYMBOL", "ENTRZ")
+ctsf <- merge(ent2S, resdi, "ENTRZ", all = TRUE)
+u_ctsf<- unique(ctsf)
+
+
+
+genes_0.1 <- u_ctsf$V1
+rows <- match(genes_0.1, row.names(rld))
+    mat <- assay(rld)[rows,1:16]
+    mat <- mat - rowMeans(mat)
+    mat <- as.data.frame(mat)
+mat <- as.matrix(as.data.frame(mat))
+mat <- unique(mat)
+
+
+library(biomaRt)
+
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+
+transcript_ids <- rownames(mat)
+
+
+
+
+temp <- getBM(attributes = c('ensembl_transcript_id_version', 
+                            'ensembl_gene_id', 
+                            'external_transcript_name',
+                            'external_gene_name'),
+             filters = 'ensembl_transcript_id_version', 
+             values = transcript_ids,
+             mart = mart)
+
+temp<- unique(temp)
+
+
+matX <- mat[(rownames(mat) %in% temp$ensembl_transcript_id_version),]
+
+temp2 <- getBM(attributes = c('ensembl_transcript_id_version', 
+                            'ensembl_gene_id', 
+                            'external_transcript_name',
+                            'external_gene_name'),
+             filters = 'ensembl_transcript_id_version', 
+             values = rownames(matX),
+             mart = mart)
+
+matX<-  matX[order(rownames(matX)),]
+temp2 <- temp2[order(temp2$ensembl_transcript_id_version),]
+dim(matX)
+dim(temp2)
+rownames(matX) <-  temp2$external_transcript_name
+
+    df <- as.data.frame(colData(rld))
+my_sample_col <- as.data.frame(df$condition)
+row.names(my_sample_col) <- row.names(df)
+
+my_gene_colX <- as.data.frame(matX[,1])
+colnames(my_gene_colX) <- "cluster"
+my_gene_colX$cluster <- 1
+my_gene_colX
+
+pheatmap(matX,
+         annotation_row = my_gene_colX,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+         cutree_cols = 2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+foldchanges = u_ctsf$log2FoldChange
+names(foldchanges) = u_ctsf$ENTRZ
+head(foldchanges)
+
+
+# Get the results
+keggres = gage(foldchanges, gsets=kegg.sets.hs, same.dir=TRUE)
+
+# Look at both up (greater), down (less), and statatistics.
+lapply(keggres, head)
+keggrespathways = data.frame(id=rownames(keggres$greater), keggres$greater)
+keggrespathways[1:10,]
+
+keggresids = substr(keggrespathways, start=1, stop=6)
+keggresids
+
+keggrespathways = data.frame(id=rownames(keggres$greater), keggres$greater)
+
+keggresids = substr(keggrespathways, start=1, stop=6)
+
+# Define plotting function for applying later
+plot_pathway = function(pid) pathview(gene.data=foldchanges, pathway.id=pid, species="hsa", new.signature=FALSE)
+
+# plot multiple pathways (plots saved to disk and returns a throwaway list object)
+tmp = sapply(keggresids, function(pid) pathview(gene.data=foldchanges, pathway.id=pid, species="hsa"))
+
+
+
+
