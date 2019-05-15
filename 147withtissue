@@ -1,0 +1,229 @@
+library("DESeq2")
+library("ggplot2")
+library("pheatmap")
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+library(annotate)
+library(dplyr)
+library(pathview)
+library(gage)
+library(gageData)
+data(kegg.sets.hs)
+data(sigmet.idx.hs)
+kegg.sets.hs = kegg.sets.hs[sigmet.idx.hs]
+head(kegg.sets.hs, 3)
+
+library(biomaRt)
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+cd /scratch/03988/qscai/RNAseq/whole
+cts6 <- read.table("counts/all.tsv006", row.names=1, header=T)
+cts7 <- read.table("counts/all.tsv007", row.names=1, header=T)
+
+#remove 15 and no LN----------------------------
+cts <- cts6 +cts7
+head(cts)
+#remove MCL.16 17 18 19 20 22 23
+cts <- cts[,c(1:6,12,14,18:24)]
+head(cts)
+coldata <- read.table("samples.tsvX1624", row.names=1,  header = T)
+name_t <- rownames(coldata)[c(1:6,8:16)]
+coldata <- data.frame(coldata[c(1:6,8:16),])
+rownames(coldata) <- name_t
+colnames(coldata) <- "condition"
+coldata
+#----------------------------------------------
+
+
+
+
+dds <- DESeqDataSetFromMatrix(countData = cts,
+                              colData = coldata,
+                              design = ~ condition)
+dds
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds$condition <- factor(dds$condition, levels = c( "Resistance", "Sensitive"))
+dds <- DESeq(dds)
+dds <- estimateSizeFactors(dds)
+# shifted log of normalized counts
+se <- SummarizedExperiment(log2(counts(dds, normalized=TRUE) + 1), colData=colData(dds))
+
+pdf("PCA14and21.pdf",width=7,height=5)
+z <- plotPCA( DESeqTransform(se) )
+z + geom_label(aes(label = name))
+nudge <- position_nudge(y = 1)
+z + geom_label(aes(label = name), position = nudge)
+z + geom_text(aes(label = name), position = nudge)
+ dev.off()
+
+
+
+###################################
+
+
+#####pathway
+res <- results(dds, name="condition_Sensitive_vs_Resistance")
+res <- results(dds, contrast=c("condition","Resistance", "Sensitive"))
+res.nona<- res[!is.na(res$padj),]
+
+
+res2 <- res.nona[(res.nona$padj < 0.05),]
+res2$V1 <- rownames(res2)
+resd <- data.frame(res2)
+
+ent1 = read.table("counts/knowtokeggentrez",  sep = "+")
+ent2 = read.table("counts/knowtokeggentrez")
+ent <- cbind(ent2,ent1$V2) 
+ent <- ent[,c(1,4)]
+
+resdi<- merge(resd, ent, "V1")
+colnames(resdi)[8] <- "ENTRZ"
+resdi8<- resdi[,8]
+l1 <-as.character( as.list(resdi8[!duplicated(resdi8)]))
+getSYMBOL(l1, data='org.Hs.eg')
+ent2S<- as.data.frame(getSYMBOL(l1, data='org.Hs.eg'))
+ent2S$V1 <- rownames(ent2S)
+
+colnames(ent2S) <- c("SYMBOL", "ENTRZ")
+ctsf <- merge(ent2S, resdi, "ENTRZ", all = TRUE)
+u_ctsf<- unique(ctsf)
+
+
+foldchanges = u_ctsf$log2FoldChange
+names(foldchanges) = u_ctsf$ENTRZ
+head(foldchanges)
+
+
+# Get the results
+keggres = gage(foldchanges, gsets=kegg.sets.hs, same.dir=TRUE)
+
+# Look at both up (greater), down (less), and statatistics.
+lapply(keggres, head)
+
+
+#  wrong code
+keggrespathways = data.frame(id=rownames(keggres$greater), keggres$greater) %>% 
+  tbl_df() %>% 
+  filter(row_number()<=8) %>% 
+  .$id %>% 
+  as.character()
+keggrespathways
+keggresids = substr(keggrespathways, start=1, stop=8)
+
+#ok
+greater <- data.frame(keggres$greater)
+greater <- greater[order(-greater$set.size),]
+keggresids <- substr(rownames(greater), start=1, stop=8)[1:10]
+keggresids
+
+
+# Define plotting function for applying later
+plot_pathway = function(pid) pathview(gene.data=foldchanges, pathway.id=pid, species="hsa", new.signature=FALSE)
+
+# plot multiple pathways (plots saved to disk and returns a throwaway list object)
+tmp = sapply(keggresids, function(pid) pathview(gene.data=foldchanges, pathway.id=pid, species="hsa"))
+
+
+
+pdf("folderFDR0)without15.pdf",width=7,height=5)
+plot(u_ctsf$log2FoldChange, log10(u_ctsf$pvalue) )
+plot(u_ctsf$log2FoldChange, log10(u_ctsf$padj) )
+plot(u_ctsf$log2FoldChange, u_ctsf$padj )
+ggplot(u_ctsf, aes(log2FoldChange, -log10(u_ctsf$pvalue) )) +   geom_point()
+abline(v=0, col="black", lty=4, lwd=2.0)
+abline(v=-2, col="black", lty=4, lwd=2.0)
+abline(v=2, col="black", lty=4, lwd=2.0)
+abline(h=-log10(max(topT$pvalue[topT$padj<0.05], na.rm=TRUE)), col="black", lty=4, lwd=2.0)
+dev.off()
+
+
+
+pdf("folderFDR2without15.pdf",width=7,height=5)
+par(mar=c(5,5,5,5), cex=1.0, cex.main=1.4, cex.axis=1.4, cex.lab=1.4)
+topT <- as.data.frame(res)
+
+#Adjusted P values (FDR Q values)
+with(topT, plot(log2FoldChange, -log10(padj), pch=20, main="Volcano plot", cex=1.0, xlab=bquote(~Log[2]~fold~change), ylab=bquote(~-log[10]~Q~value)))
+
+with(subset(topT, padj<0.05 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(padj), pch=20, col="red", cex=0.5))
+
+#with(subset(topT, padj<0.05 & abs(log2FoldChange)>2), text(log2FoldChange, -log10(padj), labels=subset(rownames(topT), topT$padj<0.05 & abs(topT$log2FoldChange)>2), cex=0.8, pos=3))
+
+#Add lines for absolute FC>2 and P-value cut-off at FDR Q<0.05
+abline(v=0, col="black", lty=3, lwd=1.0)
+abline(v=-2, col="black", lty=4, lwd=2.0)
+abline(v=2, col="black", lty=4, lwd=2.0)
+abline(h=-log10(max(topT$pvalue[topT$padj<0.05], na.rm=TRUE)), col="black", lty=4, lwd=2.0)
+dev.off()
+
+
+
+
+################
+
+
+rld <- rlog(dds, blind=F)
+genes_0.1 <- u_ctsf$V1
+rows <- match(genes_0.1, row.names(rld))
+    mat <- assay(rld)[rows,1:15]
+   
+   #________________
+   mat <- assay(rld)[rows,1:13]
+    mat <- mat - rowMeans(mat)
+    mat <- as.data.frame(mat)
+mat <- as.matrix(as.data.frame(mat))
+mat <- unique(mat)
+
+transcript_ids <- rownames(mat)
+temp <- getBM(attributes = c('ensembl_transcript_id_version', 
+                            'ensembl_gene_id', 
+                            'external_transcript_name',
+                            'external_gene_name'),
+             filters = 'ensembl_transcript_id_version', 
+             values = transcript_ids,
+             mart = mart)
+
+temp<- unique(temp)
+
+
+matX <- mat[(rownames(mat) %in% temp$ensembl_transcript_id_version),]
+
+temp3 <- getBM(attributes = c('ensembl_transcript_id_version', 
+                            'ensembl_gene_id', 
+                            'external_transcript_name',
+                            'external_gene_name'),
+             filters = 'ensembl_transcript_id_version', 
+             values = rownames(matX),
+             mart = mart)
+
+matX <-  matX[order(rownames(matX)),]
+temp3 <- temp3[order(temp3$ensembl_transcript_id_version),]
+head(matX)
+head(temp3)
+
+
+temp3$mix <- paste(temp3$external_gene_name, temp3$ensembl_transcript_id_version, sep = "_")
+temp3$test <- rownames(matX)
+head(temp3)
+
+rownames(matX) <-  temp3$mix
+head(matX)
+
+df <- as.data.frame(colData(rld))
+my_sample_col <- as.data.frame(df$condition)
+row.names(my_sample_col) <- row.names(df)
+
+my_gene_colX <- as.data.frame(matX[,1])
+colnames(my_gene_colX) <- "cluster"
+my_gene_colX$cluster <- 1
+my_gene_colX
+
+
+pdf("heatmapwithout15.pdf",width=7,height=15)
+pheatmap(matX,
+         annotation_row = my_gene_colX,
+         annotation_col = my_sample_col,
+         cutree_rows = 2,
+         cutree_cols = 2)
+
+dev.off()
