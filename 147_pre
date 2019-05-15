@@ -1,0 +1,121 @@
+https://bioinformatics-core-shared-training.github.io/cruk-summer-school-2018/RNASeq2018/html/02_Preprocessing_Data.nb.html
+
+library(DESeq2)
+library(tidyverse)
+
+# Read the sample information into a data frame
+sampleinfo <- read.delim("samplesM.txt", stringsAsFactors=F)
+sampleinfo
+
+# Read the data into R
+cts6 <- read.table("counts/all.tsv006", row.names=1, header=T)
+cts7 <- read.table("counts/all.tsv007", row.names=1, header=T)
+seqdata <- cts6 +cts7
+head(seqdata)
+
+keep <- rowSums(seqdata) > 5
+countdata <- seqdata[keep,]
+dim(countdata)
+
+dim(seqdata)
+keep <- rowSums(seqdata) > 5
+countdata <- countdata[keep,]
+dim(countdata)
+countdata <- as.matrix(countdata)
+
+librarySizes <- colSums(countdata)
+barplot(librarySizes, 
+        names=names(librarySizes), 
+        las=2, 
+        main="Barplot of library sizes")
+abline(h=20e6, lty=2)
+
+
+# Get log2 counts per million
+logcounts <- log2(countdata + 1)
+
+# make a colour vector
+tissueCol <- as.numeric(factor(sampleinfo$tissue)) + 1
+# Check distributions of samples using boxplots
+boxplot(logcounts, 
+        xlab="", 
+        ylab="Log2(Counts)",
+        las=2,
+        col=tissueCol)
+# Let's add a blue horizontal line that corresponds to the median logCPM
+abline(h=median(as.matrix(logcounts)), col="blue")
+
+
+library(ggfortify)
+rlogcounts <- rlog(countdata)
+# run PCA
+
+autoplot(pcDat,
+         data = sampleinfo, 
+         colour="tissue", 
+         shape="condition",
+         size=5)
+
+library(Glimma)
+glMDSPlot(rlogcounts, 
+          labels = sampleinfo$samples, 
+          groups = sampleinfo[,c("condition", "tissue")], 
+          folder = "mds")
+
+# We estimate the variance for each row in the logcounts matrix
+countVar <- apply(rlogcounts, 1, var)
+# Get the row numbers for the top 500 most variable genes
+highVar <- order(countVar, decreasing=TRUE)[1:500]
+# Subset logcounts matrix
+hmDat <- rlogcounts[highVar,]
+
+
+
+library(gplots)
+library(RColorBrewer)
+# Get some nicer colours
+mypalette <- brewer.pal(11, "RdYlBu")
+# http://colorbrewer2.org/#type=sequential&scheme=BuGn&n=3
+morecols <- colorRampPalette(mypalette)
+# Set up colour vector for celltype variable
+col.sample <- c("purple","orange")[sampleinfo$condition]
+# Plot the heatmap
+
+condition_color <- unlist( lapply(sampleinfo$condition, function(x){  
+                  if (grepl("Resistant", x)) "purple"     
+                  else if (grepl("Sensitive", x)) "orange"
+                  }))
+
+pdf("Htest.pdf",width=7,height=5)
+heatmap.2(hmDat, 
+          col=rev(morecols(50)),
+          trace="column", 
+          main="Top 500 most variable genes across samples",
+          ColSideColors=condition_color,
+          scale="row")
+dev.off()
+
+
+tissue_color <- unlist( lapply(sampleinfo$tissue, function(x){  
+                  if (grepl("LN", x)) "red"     
+                  else if (grepl("PB", x)) "green"
+                  else if (grepl("PE", x)) "yellow"
+ 
+ }))       
+ myCols <- cbind(condition_color,tissue_color )
+ colnames(myCols)[1] <- "Condtion"
+ colnames(myCols)[2] <- "Tissue"
+ 
+ install.packages("heatmap.plus")
+ library("heatmap.plus")
+ 
+ pdf("Htest.plus.pdf",width=7,height=5)
+ heatmap.plus(hmDat, 
+          col=rev(morecols(50)),
+          trace="column", 
+          main="Top 500 most variable genes across samples",
+          ColSideColors=myCols,
+          scale="row")
+dev.off()
+               
+                  
