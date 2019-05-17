@@ -1,5 +1,4 @@
-# load the RData object we created in the previous session
-load("Robjects/preprocessing.RData")
+load("results/preprocessing_2.RData")
 
 library(tidyverse)
 library(DESeq2)
@@ -36,3 +35,5 @@ topGenesTvV <- as.data.frame(resTissue_vV) %>%
     arrange(padj) %>% 
     head(100)
 topGenesTvV
+
+save(ddsObj, countdata, rlogcounts, sampleinfo, logNormalizedCounts, file="results/DE.RData")
