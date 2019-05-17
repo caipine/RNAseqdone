@@ -1,0 +1,38 @@
+# load the RData object we created in the previous session
+load("Robjects/preprocessing.RData")
+
+library(tidyverse)
+library(DESeq2)
+
+design <- as.formula(~ tissue + condition)
+modelMatrix <- model.matrix(design, data = sampleinfo)
+modelMatrix
+
+# create the DESeqDataSet object
+ddsObj.raw <- DESeqDataSetFromMatrix(countData = countdata,
+                                     colData = sampleinfo,
+                                     design = design)
+                                     
+vstcounts <- vst(ddsObj.raw, blind=TRUE)
+plotPCA(vstcounts, intgroup=c("condition", "tissue"))
+
+
+
+ddsObj <- DESeq(ddsObj.raw)
+res <- results(ddsObj, alpha=0.05)
+head(res)
+
+
+modelMatrix
+resultsNames(ddsObj)
+resLvV <- res
+
+
+resTissue_vV <- results(ddsObj, 
+                  name="tissue_PB_vs_LN", 
+                  alpha = 0.05)
+topGenesTvV <- as.data.frame(resTissue_vV) %>%
+    rownames_to_column("GeneID") %>% 
+    arrange(padj) %>% 
+    head(100)
+topGenesTvV
