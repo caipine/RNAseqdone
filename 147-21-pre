@@ -46,12 +46,16 @@ library(ggfortify)
 rlogcounts <- rlog(countdata)
 save(countdata, rlogcounts, sampleinfo, file="results/preprocessing.RData")
 
+#########################################################
+library(ggfortify)
+library(DESeq2)
+library(tidyverse)
 
 load ("results/preprocessing.RData")
 # run PCA
 pcDat <- prcomp(t(rlogcounts))
 # plot PCA
-library(ggfortify)
+
 
 par(mfrow=c(2,2))
 autoplot(pcDat)
@@ -156,6 +160,11 @@ sizeFactors(ddsObj)
 
 library(limma)
 logcounts <- log2(countdata + 1)
+
+normalizedCounts <- counts(ddsObj, normalized=TRUE) 
+logNormalizedCounts <- log2(normalizedCounts + 1)
+
+pdf("compare.pdf",width=7,height=5)
 par(mfrow=c(1,2))
 plotMA(logcounts, array = 7)
 abline(h=0,col="grey")
@@ -163,12 +172,12 @@ plotMA(logcounts, array = 11)
 abline(h=0,col="grey")
 
 
-normalizedCounts <- counts(ddsObj, normalized=TRUE) 
-logNormalizedCounts <- log2(normalizedCounts + 1)
 par(mfrow=c(1,2))
 plotMA(logNormalizedCounts, array = 7)
 abline(h=0,col="grey")
 plotMA(logNormalizedCounts, array = 11)
 abline(h=0,col="grey")
 
-save(countdata, sampleinfo, file="results/preprocessing.RData")
+dev.off()
+
+save(countdata, rlogcounts, sampleinfo, logNormalizedCounts, file="results/preprocessing_2.RData")
