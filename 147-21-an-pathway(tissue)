@@ -1,0 +1,133 @@
+load("results/DE.RData")
+
+
+library(dplyr)
+library(biomaRt)
+library(DESeq2)
+library(tidyverse)
+
+ensembl <- useMart("ENSEMBL_MART_ENSEMBL","hsapiens_gene_ensembl", host = "www.ensembl.org")
+ensembl = useDataset("hsapiens_gene_ensembl", mart=ensembl)
+
+# Set the list of attributes
+resTissue_vV <- results(ddsObj, 
+                  name="tissue_PB_vs_LN", 
+                  alpha = 0.05)
+                  
+                  
+annot <- getBM(attributes = c('ensembl_transcript_id_version', 
+                            'ensembl_gene_id', 
+                            'external_transcript_name',
+                            'external_gene_name',
+                            'entrezgene'),
+             filters = 'ensembl_transcript_id_version', 
+             values = rownames(resTissue_vV ),
+             mart =  ensembl)
+ 
+ annotL <- annot[,c(1,5,4)]
+ colnames(annotL) <- c("GeneID", "Entrez", "Symbol")
+
+
+resTissue_vV  <- as.data.frame(resTissue_vV) %>% 
+    rownames_to_column("GeneID") %>% 
+    left_join( annotL, "GeneID") 
+
+
+
+ddsShrink <- lfcShrink(ddsObj, coef="tissue_PB_vs_LN")
+shrinkLvV <- as.data.frame(ddsShrink) %>%
+    rownames_to_column("GeneID") %>% 
+    left_join(annotL, "GeneID") 
+dim(shrinkLvV)
+shrinkLvV <- shrinkLvV[!is.na(shrinkLvV$Symbol),]
+dim(shrinkLvV)
+
+# add a column with the names of only the top 10 genes
+cutoff <- sort(shrinkLvV$pvalue)[10]
+shrinkLvV <- shrinkLvV %>% 
+    mutate(TopGeneLabel=ifelse(pvalue<=cutoff, Symbol, ""))
+    
+ggplot(shrinkLvV, aes(x = log2(baseMean), y=log2FoldChange)) + 
+    geom_point(aes(colour=padj < 0.05), shape=20, size=0.5) +
+    geom_text(aes(label=TopGeneLabel)) +
+    labs(x="mean of normalised counts", y="log fold change")
+
+
+
+
+
+
+load("Robjects/DE.RData")
+load("Robjects/Ensembl_annotations.RData")
+
+annotLvV <- as.data.frame(resLvV) %>% 
+    rownames_to_column("GeneID") %>% 
+    left_join(ensemblAnnot, "GeneID") 
+
+%>% 
+    rename(logFC=log2FoldChange, FDR=padj)
+
+
+ddsShrink <- lfcShrink(ddsObj, coef="Status_lactate_vs_virgin")
+shrinkLvV <- as.data.frame(ddsShrink) %>%
+    rownames_to_column("GeneID") %>% 
+    left_join(ensemblAnnot, "GeneID") 
+
+%>% 
+    rename(logFC=log2FoldChange, FDR=padj)
+
+
+
+# add a column with the names of only the top 10 genes
+cutoff <- sort(shrinkLvV$pvalue)[10]
+shrinkLvV <- shrinkLvV %>% 
+    mutate(TopGeneLabel=ifelse(pvalue<=cutoff, Symbol, ""))
+ggplot(shrinkLvV, aes(x = log2(baseMean), y=log2FoldChange)) + 
+    geom_point(aes(colour=padj < 0.05), shape=20, size=0.5) +
+    geom_text(aes(label=TopGeneLabel)) +
+    labs(x="mean of normalised counts", y="log fold change")
+
+
+
+library(pathview)
+library(gage)
+library(gageData)
+data(kegg.sets.hs)
+data(sigmet.idx.hs)
+kegg.sets.hs = kegg.sets.hs[sigmet.idx.hs]
+head(kegg.sets.hs, 3)
+
+dim(shrinkLvV)
+res.nona<- shrinkLvV[!is.na(shrinkLvV$padj),]
+dim(res.nona)
+
+res2 <- res.nona[(res.nona$padj < 0.05),]
+
+foldchanges = res2$log2FoldChange
+names(foldchanges) = res2$Entrez
+head(foldchanges)
+
+
+# Get the results
+keggres = gage(foldchanges, gsets=kegg.sets.hs, same.dir=TRUE)
+
+# Look at both up (greater), down (less), and statatistics.
+lapply(keggres, head)
+
+
+
+#ok
+greater <- data.frame(keggres$greater)
+greater <- greater[order(-greater$set.size),]
+keggresids <- substr(rownames(greater), start=1, stop=8)[1:10]
+keggresids
+
+
+# Define plotting function for applying later
+plot_pathway = function(pid) pathview(gene.data=foldchanges, pathway.id=pid, species="hsa", new.signature=FALSE)
+
+# plot multiple pathways (plots saved to disk and returns a throwaway list object)
+tmp = sapply(keggresids, function(pid) pathview(gene.data=foldchanges, pathway.id=pid, species="hsa"))
+
+
+
