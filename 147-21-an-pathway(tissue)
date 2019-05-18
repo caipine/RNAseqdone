@@ -1,13 +1,11 @@
 load("results/DE.RData")
-
-
 library(dplyr)
 library(biomaRt)
 library(DESeq2)
 library(tidyverse)
 
 ensembl <- useMart("ENSEMBL_MART_ENSEMBL","hsapiens_gene_ensembl", host = "www.ensembl.org")
-ensembl = useDataset("hsapiens_gene_ensembl", mart=ensembl)
+ensembl <- useDataset("hsapiens_gene_ensembl", mart=ensembl)
 
 # Set the list of attributes
 resTissue_vV <- results(ddsObj, 
@@ -33,7 +31,6 @@ resTissue_vV  <- as.data.frame(resTissue_vV) %>%
     left_join( annotL, "GeneID") 
 
 
-
 ddsShrink <- lfcShrink(ddsObj, coef="tissue_PB_vs_LN")
 shrinkLvV <- as.data.frame(ddsShrink) %>%
     rownames_to_column("GeneID") %>% 
@@ -53,12 +50,136 @@ ggplot(shrinkLvV, aes(x = log2(baseMean), y=log2FoldChange)) +
     labs(x="mean of normalised counts", y="log fold change")
 
 
+########################
+resTissue_vV.nona<- resTissue_vV[!is.na(resTissue_vV$Symbol),]
+resTissue_vV.0.01 <- resTissue_vV.nona[(resTissue_vV.nona$padj < 0.01),]
+resTissue_vV.0.01 <- resTissue_vV.0.01[!is.na(resTissue_vV.0.01$GeneID),]
+dim(resTissue_vV.0.01) #3557
+
+hmDat <- logNormalizedCounts[resTissue_vV.0.01$GeneID,]
+
+library(gplots)
+library(RColorBrewer)
+# Get some nicer colours
+mypalette <- brewer.pal(11, "RdYlBu")
+# http://colorbrewer2.org/#type=sequential&scheme=BuGn&n=3
+morecols <- colorRampPalette(mypalette)
+# Set up colour vector for celltype variable
+col.sample <- c("purple","orange")[sampleinfo$condition]
+# Plot the heatmap
+
+condition_color <- unlist( lapply(sampleinfo$condition, function(x){  
+                  if (grepl("Resistant", x)) "purple"     
+                  else if (grepl("Sensitive", x)) "orange"
+                  }))
+
+pdf("21tissue0.01.pdf",width=7,height=5)
+heatmap.2(hmDat, 
+          col=rev(morecols(50)),
+          trace="column", 
+          main="Top 500 most variable genes across samples",
+          ColSideColors=condition_color,
+          scale="row")
+dev.off()
+
+
+tissue_color <- unlist( lapply(sampleinfo$tissue, function(x){  
+                  if (grepl("LN", x)) "red"     
+                  else if (grepl("PB", x)) "green"
+                  else if (grepl("PE", x)) "yellow"
+ 
+ }))       
+ myCols <- cbind(condition_color,tissue_color )
+ colnames(myCols)[1] <- "Condtion"
+ colnames(myCols)[2] <- "Tissue"
+ 
+ #install.packages("heatmap.plus")
+ library("heatmap.plus")
+ 
+ pdf("21-tissue0.01.plus.pdf",width=7,height=5)
+ heatmap.plus(hmDat, 
+          col=rev(morecols(50)),
+          trace="column", 
+          main="Top 500 most variable genes across samples",
+          ColSideColors=myCols,
+          scale="row")
+dev.off()
+####################################################
+
+resCon_vV <- results(ddsObj, 
+                  name="condition_Sensitive_vs_Resistant", 
+                  alpha = 0.05)
+                  
+resCon_vV  <- as.data.frame(resCon_vV) %>% 
+    rownames_to_column("GeneID") %>% 
+    left_join( annotL, "GeneID") 
+
+
+resCon_vV.nona <- resCon_vV[!is.na(resCon_vV$Symbol),]
+resCon_vV.0.01 <- resCon_vV.nona[(resCon_vV.nona$padj < 0.01),]
+resCon_vV.0.01 <- resCon_vV.0.01[!is.na(resCon_vV.0.01$GeneID),]
+dim(resCon_vV.0.01) #3557
+
+hmDat <- logNormalizedCounts[resCon_vV.0.01$GeneID,]
 
 
 
 
-load("Robjects/DE.RData")
-load("Robjects/Ensembl_annotations.RData")
+tissue_color <- unlist( lapply(sampleinfo$tissue, function(x){  
+                  if (grepl("LN", x)) "red"     
+                  else if (grepl("PB", x)) "green"
+                  else if (grepl("PE", x)) "yellow"
+ 
+ }))       
+ myCols <- cbind(condition_color,tissue_color )
+ colnames(myCols)[1] <- "Condtion"
+ colnames(myCols)[2] <- "Tissue"
+ 
+ #install.packages("heatmap.plus")
+ library("heatmap.plus")
+ 
+ pdf("21-IBN.01.plus.pdf",width=7,height=5)
+ heatmap.plus(hmDat, 
+          col=rev(morecols(50)),
+          trace="column", 
+          main="Top 500 most variable genes across samples",
+          ColSideColors=myCols,
+          scale="row")
+dev.off()
+
+###############********************************
+
+trueR <- resCon_vV.0.01[!(resCon_vV.0.01$GeneID %in% resTissue_vV.0.01$GeneID),]
+
+hmDat <- logNormalizedCounts[trueR$GeneID,]
+rownames(hmDat) <- trueR$Symbol
+tissue_color <- unlist( lapply(sampleinfo$tissue, function(x){  
+                  if (grepl("LN", x)) "red"     
+                  else if (grepl("PB", x)) "green"
+                  else if (grepl("PE", x)) "yellow"
+ 
+ }))       
+ myCols <- cbind(condition_color,tissue_color )
+ colnames(myCols)[1] <- "Condtion"
+ colnames(myCols)[2] <- "Tissue"
+ 
+ #install.packages("heatmap.plus")
+ library("heatmap.plus")
+ 
+ pdf("21-IBN-true.01.plus.pdf",width=7,height=5)
+ heatmap.plus(hmDat, 
+          col=rev(morecols(50)),
+          trace="column", 
+          main="Top 500 most variable genes across samples",
+          ColSideColors=myCols,
+          scale="row")
+dev.off()
+
+
+
+
+
+
 
 annotLvV <- as.data.frame(resLvV) %>% 
     rownames_to_column("GeneID") %>% 
@@ -88,7 +209,7 @@ ggplot(shrinkLvV, aes(x = log2(baseMean), y=log2FoldChange)) +
     labs(x="mean of normalised counts", y="log fold change")
 
 
-
+##########################################################
 library(pathview)
 library(gage)
 library(gageData)
