@@ -15,25 +15,32 @@ ddsObj.raw <- DESeqDataSetFromMatrix(countData = countdata,
 vstcounts <- vst(ddsObj.raw, blind=TRUE)
 plotPCA(vstcounts, intgroup=c("condition", "tissue"))
 
+##################
+#ddsObj <- estimateSizeFactors(ddsObj.raw)
+#ddsObj <- estimateDispersions(ddsObj)
+#ddsObj <- nbinomWaldTest(ddsObj)
+##################
 
-
+# Run DESeq
 ddsObj <- DESeq(ddsObj.raw)
 res <- results(ddsObj, alpha=0.05)
 head(res)
-
 
 modelMatrix
 resultsNames(ddsObj)
 resLvV <- res
 
+save(ddsObj, countdata, rlogcounts, sampleinfo, logNormalizedCounts, file="results/DE.RData")
 
 resTissue_vV <- results(ddsObj, 
                   name="tissue_PB_vs_LN", 
                   alpha = 0.05)
+                  
 topGenesTvV <- as.data.frame(resTissue_vV) %>%
     rownames_to_column("GeneID") %>% 
     arrange(padj) %>% 
     head(100)
 topGenesTvV
 
-save(ddsObj, countdata, rlogcounts, sampleinfo, logNormalizedCounts, file="results/DE.RData")
+
+
